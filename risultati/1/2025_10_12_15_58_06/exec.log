@@ -1,0 +1,4 @@
+[CMD] /usr/bin/python3 '/volume1/web/avvocati/elabora_docx.py' '/volume1/web/avvocati/risultati/1/2025_10_12_15_58_06/input.docx' '/volume1/web/avvocati/risultati/1/2025_10_12_15_58_06/output.docx' '/volume1/web/avvocati/urn_index.json' 2>&1
+
+/usr/bin/python3: can't open file '/volume1/web/avvocati/elabora_docx.py': [Errno 2] No such file or directory
+[RC] 2

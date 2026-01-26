@@ -1,0 +1,17 @@
+[2025-09-13 14:35:18] [uid:-] [ip:192.168.1.95] SQL ERROR (0.34904479980469 ms): Unknown column 'cf' in 'where clause' | SQL: SELECT COUNT(*) FROM clienti WHERE 1 AND (nome LIKE '%3%' OR cognome LIKE '%3%' OR cf LIKE '%3%')
+[2025-09-27 11:41:37] [uid:-] [ip:192.168.1.144] SQL ERROR (0.33712387084961 ms): Unknown column 'stato' in 'field list' | SQL: INSERT INTO cause (id_cliente,titolo,autorita,numero_rg,data_inizio,data_fine,descrizione,stato)
+                            VALUES (8,'ew','dws','qwe',NULL,NULL,'','aperte')
+[2025-09-27 11:42:11] [uid:-] [ip:192.168.1.144] SQL ERROR (0.34809112548828 ms): Unknown column 'stato' in 'field list' | SQL: INSERT INTO cause (id_cliente,titolo,autorita,numero_rg,data_inizio,data_fine,descrizione,stato)
+                            VALUES (8,'oiuytrewq','','',NULL,NULL,'','aperte')
+[2025-09-27 11:43:41] [uid:-] [ip:192.168.1.144] SQL ERROR (0.34809112548828 ms): Unknown column 'stato' in 'field list' | SQL: INSERT INTO cause (id_cliente,titolo,autorita,numero_rg,data_inizio,data_fine,descrizione,stato)
+                            VALUES (8,'oiuytrewqe','','',NULL,NULL,'','aperte')
+[2025-09-27 11:43:49] [uid:-] [ip:192.168.1.144] SQL ERROR (0.35190582275391 ms): Unknown column 'stato' in 'field list' | SQL: INSERT INTO cause (id_cliente,titolo,autorita,numero_rg,data_inizio,data_fine,descrizione,stato)
+                            VALUES (8,'v','','',NULL,NULL,'','aperte')
+[2025-09-27 12:30:45] [uid:-] [ip:192.168.1.144] SQL ERROR (0.26082992553711 ms): Unknown column 'id_categoria' in 'field list' | SQL: INSERT INTO cause_file (id_causa,id_categoria,nome_originale,path_relativo,size_bytes)
+                                VALUES (1,4,'avvocati.sql','uploads/cliente_8/causa_1/1758969045_avvocati.sql',5894)
+[2025-09-27 16:40:51] [uid:-] [ip:192.168.1.144] SQL ERROR (0.24914741516113 ms): Unknown column 'id_categoria' in 'field list' | SQL: INSERT INTO cause_file (id_causa,id_categoria,nome_originale,path_relativo,size_bytes)
+                                VALUES (2,NULL,'avvocati.sql','uploads/cliente_8/causa_2/1758984051_avvocati.sql',5894)
+[2025-09-28 09:42:50] [uid:-] [ip:192.168.1.144] SQL ERROR (0.21100044250488 ms): Unknown column 'updated_at' in 'order clause' | SQL: SELECT * FROM cause WHERE id_cliente=8 ORDER BY updated_at DESC, created_at DESC
+[2025-09-28 10:22:33] [uid:-] [ip:192.168.1.149] EXCEPTION: Call to undefined function str_starts_with() @ /volume1/web/avvocati/clienti.php:158
+[2025-09-28 10:22:37] [uid:-] [ip:192.168.1.149] EXCEPTION: Call to undefined function str_starts_with() @ /volume1/web/avvocati/clienti.php:158
+[2025-09-28 10:27:13] [uid:-] [ip:192.168.1.149] EXCEPTION: Call to undefined function str_starts_with() @ /volume1/web/avvocati/clienti.php:158

@@ -1,0 +1,9 @@
+[2025-09-28 11:25:56] [uid:-] [ip:192.168.1.149] SQL ERROR: Unknown column 'updated_at' in 'order clause' | SELECT * FROM cause WHERE id_cliente=8 ORDER BY updated_at DESC, created_at DESC
+[2025-09-28 11:32:00] [uid:-] [ip:192.168.1.149] SQL ERROR: Unknown column 'tipo' in 'where clause' | SELECT * FROM cause_file WHERE id_causa=2 AND (tipo='cliente' OR tipo IS NULL) ORDER BY COALESCE(doc_date, uploaded_at) ASC
+[2025-09-28 11:48:47] [uid:-] [ip:192.168.1.149] SQL ERROR: Unknown column 'tipo' in 'where clause' | SELECT * FROM cause_file WHERE id_causa=2 AND (tipo='cliente' OR tipo IS NULL) ORDER BY COALESCE(doc_date, uploaded_at) ASC
+[2025-09-28 11:48:55] [uid:-] [ip:192.168.1.149] SQL ERROR: Unknown column 'tipo' in 'where clause' | SELECT * FROM cause_file WHERE id_causa=1 AND (tipo='cliente' OR tipo IS NULL) ORDER BY COALESCE(doc_date, uploaded_at) ASC
+[2025-09-28 11:54:59] [uid:-] [ip:192.168.1.149] SQL ERROR: Unknown column 'tipo' in 'where clause' | SELECT * FROM cause_file WHERE id_causa=2 AND (tipo='cliente' OR tipo IS NULL) ORDER BY COALESCE(doc_date, uploaded_at) ASC
+[2025-09-28 14:14:13] [uid:-] [ip:192.168.1.149] EXCEPTION: Call to undefined function ensure_agenda_table() @ /volume1/web/avvocati/clienti_cause.php:212
+[2025-09-28 17:15:03] [uid:-] [ip:192.168.1.149] SQL ERROR: Unknown column 'start_dt' in 'order clause' | SELECT * FROM cause_agenda WHERE id_causa=3 ORDER BY start_dt ASC
+[2025-10-11 09:44:23] [uid:-] [ip:192.168.1.43] EXCEPTION: Call to undefined function dedup_ok() @ /volume1/web/avvocati/clienti_cause.php:1084
+[2025-10-11 09:44:34] [uid:-] [ip:192.168.1.43] EXCEPTION: Call to undefined function dedup_ok() @ /volume1/web/avvocati/clienti_cause.php:1084
