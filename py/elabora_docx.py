@@ -93,20 +93,38 @@ def build_urn(tipo, numero, data="0000-00-00", articolo=None, estensione=None, a
         urn += suffix
     return urn
 
+def lookup_urn_entry(raw_key):
+    normalized = re.sub(r"\.+", ".", raw_key.lower().replace(" ", ""))
+    candidates = [normalized]
+    if normalized.endswith("."):
+        candidates.append(normalized.rstrip("."))
+    else:
+        candidates.append(normalized + ".")
+    for candidate in candidates:
+        if candidate in urn_db:
+            return urn_db[candidate]
+    return None
+
+def build_codice_urn(match):
+    entry = lookup_urn_entry(match.group(2))
+    if not entry:
+        return None
+    return build_urn(
+        tipo=entry["tipo"],
+        numero=entry["numero"],
+        data=entry["data"],
+        articolo=parse_articolo(match.group(1))[0],
+        estensione=parse_articolo(match.group(1))[1],
+        allegato=parse_allegato(match.group(0))
+    )
+
 # === Regole di conversione ===
 rules = [
     (
         re.compile(r'\b(?:art\.?|articolo)\s+([0-9IVXLCDM\.]+(?:'+_EXT_TOKEN+'(?:\.\d+)?)?)\s+(c\.p+\.\?|c\.c\.\?|c\.p\.c\.\?|c\.p\.p\.\?)\b', re.IGNORECASE),
         lambda m: (
             m.group(0),
-            build_urn(
-                tipo=urn_db[m.group(2).lower()]["tipo"],
-                numero=urn_db[m.group(2).lower()]["numero"],
-                data=urn_db[m.group(2).lower()]["data"],
-                articolo=parse_articolo(m.group(1))[0],
-                estensione=parse_articolo(m.group(1))[1],
-                allegato=parse_allegato(m.group(0))
-            )
+            build_codice_urn(m)
         )
     ),
     (
@@ -143,15 +161,48 @@ def add_hyperlink(paragraph, url, text):
     hyperlink.append(new_run)
     paragraph._p.append(hyperlink)
 
+def clear_paragraph_runs(paragraph):
+    p = paragraph._p
+    for child in list(p):
+        if child.tag == qn("w:pPr"):
+            continue
+        p.remove(child)
+
+def collect_matches(text):
+    matches = []
+    for pattern, handler in rules:
+        for match in pattern.finditer(text):
+            label, link = handler(match)
+            if not link:
+                continue
+            matches.append((match.start(), match.end(), label, link))
+    matches.sort(key=lambda item: (item[0], -(item[1] - item[0])))
+    filtered = []
+    last_end = 0
+    for start, end, label, link in matches:
+        if start < last_end:
+            continue
+        filtered.append((start, end, label, link))
+        last_end = end
+    return filtered
+
 # === Main ===
 doc = Document(input_path)
 
 for para in doc.paragraphs:
-    for rule in rules:
-        for match in rule[0].finditer(para.text):
-            label, link = rule[1](match)
-            para.text = para.text.replace(match.group(0), "")
-            add_hyperlink(para, link, label)
+    text = para.text
+    matches = collect_matches(text)
+    if not matches:
+        continue
+    clear_paragraph_runs(para)
+    last_end = 0
+    for start, end, label, link in matches:
+        if start > last_end:
+            para.add_run(text[last_end:start])
+        add_hyperlink(para, link, label)
+        last_end = end
+    if last_end < len(text):
+        para.add_run(text[last_end:])
 
 # Salva
 if os.path.exists(output_path):
