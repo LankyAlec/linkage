@@ -10,116 +10,156 @@ if (empty($_SESSION['login'])) {
 
 $USER_ID = (int)($_SESSION['id_user'] ?? 0);
 
-// Genera CSRF se non presente
+// CSRF
 if (empty($_SESSION['csrf'])) {
     $_SESSION['csrf'] = bin2hex(random_bytes(16));
 }
 $csrf = $_SESSION['csrf'];
 
-// Config: path Python/script
-$PYTHON = '/usr/bin/python3';
-$SCRIPT = __DIR__ . '/elabora_docx.py';
-$RESULTS_BASE = __DIR__ . '/risultati/' . $USER_ID;
+// === CONFIG ===
+$PYTHON = "/volume1/web/avvocati/venv/bin/python";
+$SCRIPT = __DIR__ . "/py/elabora_docx.py";
+$URN_INDEX = __DIR__ . "/py/urn_index.json";
+$RESULTS_BASE = __DIR__ . "/risultati/" . $USER_ID;
 
-// Crea base dir
-@mkdir($RESULTS_BASE, 0777, true);
+// Crea base dir risultati
+if (!is_dir($RESULTS_BASE)) {
+    @mkdir($RESULTS_BASE, 0775, true);
+}
+
+// Helper flash
+function flash_and_redirect(string $type, string $msg): void {
+    $_SESSION['flash_tipo'] = $type;
+    $_SESSION['flash_msg']  = $msg;
+    header('Location: linkage.php');
+    exit;
+}
 
 // === UPLOAD ===
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'upload') {
-    if (($_POST['csrf'] ?? '') !== $_SESSION['csrf']) {
-        $_SESSION['flash_tipo'] = 'err';
-        $_SESSION['flash_msg']  = 'Richiesta non valida.';
-        header('Location: linkage.php'); exit;
+
+    if (($_POST['csrf'] ?? '') !== ($_SESSION['csrf'] ?? '')) {
+        flash_and_redirect('err', 'Richiesta non valida.');
     }
 
-    if (!isset($_FILES['doc']) || $_FILES['doc']['error'] !== UPLOAD_ERR_OK) {
-        $_SESSION['flash_tipo'] = 'err';
-        $_SESSION['flash_msg']  = 'Caricamento fallito.';
-        header('Location: linkage.php'); exit;
+    if (!isset($_FILES['doc']) || ($_FILES['doc']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        flash_and_redirect('err', 'Caricamento fallito.');
     }
 
     $f = $_FILES['doc'];
     $ext = strtolower(pathinfo($f['name'], PATHINFO_EXTENSION));
     if ($ext !== 'docx') {
-        $_SESSION['flash_tipo'] = 'err';
-        $_SESSION['flash_msg']  = 'Sono accettati solo .docx';
-        header('Location: linkage.php'); exit;
+        flash_and_redirect('err', 'Sono accettati solo .docx');
     }
 
+    // Verifiche file essenziali
+    if (!is_file($PYTHON)) {
+        flash_and_redirect('err', "Python non trovato: $PYTHON");
+    }
+    if (!is_file($SCRIPT)) {
+        flash_and_redirect('err', "Script non trovato: $SCRIPT");
+    }
+    if (!is_file($URN_INDEX)) {
+        flash_and_redirect('err', "urn_index.json non trovato: $URN_INDEX");
+    }
+
+    // Crea run dir
     $ts = date('Y_m_d_H_i_s');
     $runDir = $RESULTS_BASE . '/' . $ts;
-    @mkdir($runDir, 0777, true);
+    @mkdir($runDir, 0775, true);
 
     $orig = $runDir . '/input.docx';
     $out  = $runDir . '/output.docx';
     $log  = $runDir . '/exec.log';
 
     if (!move_uploaded_file($f['tmp_name'], $orig)) {
-        $_SESSION['flash_tipo'] = 'err';
-        $_SESSION['flash_msg']  = 'Impossibile salvare il file.';
-        header('Location: linkage.php'); exit;
+        flash_and_redirect('err', 'Impossibile salvare il file.');
     }
 
-    $urnIndex = __DIR__ . '/urn_index.json';
-    $cmd = $PYTHON . ' ' . escapeshellarg($SCRIPT) . ' ' . escapeshellarg($orig) . ' ' . escapeshellarg($out) . ' ' . escapeshellarg($urnIndex) . ' 2>&1';
-    $output = [];
+    // Comando: python script input output urn_index
+    $cmd = escapeshellarg($PYTHON) . " " .
+           escapeshellarg($SCRIPT) . " " .
+           escapeshellarg($orig) . " " .
+           escapeshellarg($out) . " " .
+           escapeshellarg($URN_INDEX) . " 2>&1";
+
+    // Esegui + log diagnostico
+    $who = [];
+    $pwd = [];
+    $cmdOut = [];
+    $rcWho = 0;
+    $rcPwd = 0;
     $rc = 0;
-    exec($cmd, $output, $rc);
-    file_put_contents($log, "[CMD] $cmd\n\n" . implode("\n", $output) . "\n[RC] $rc\n");
 
-    $runDirRel = 'risultati/' . $USER_ID . '/' . $ts;
-    $cmdEsc = mysqli_real_escape_string($connection, $cmd);
-    $dirEsc = mysqli_real_escape_string($connection, $runDirRel);
-    mysqli_query($connection, "INSERT INTO linkage_results (id_user, created_at, path_rel, last_rc) VALUES ($USER_ID, NOW(), '$dirEsc', $rc)");
+    exec("whoami 2>&1", $who, $rcWho);
+    exec("pwd 2>&1", $pwd, $rcPwd);
+    exec($cmd, $cmdOut, $rc);
 
-    if ($rc === 0 && file_exists($out)) {
-        $_SESSION['flash_tipo'] = 'ok';
-        $_SESSION['flash_msg']  = 'Elaborazione completata.';
-    } else {
-        $_SESSION['flash_tipo'] = 'err';
-        $_SESSION['flash_msg']  = 'Elaborazione conclusa con errori. Controlla il log.';
+    $logTxt =
+        "[WHO] " . implode("\n", $who) . "\n" .
+        "[PWD] " . implode("\n", $pwd) . "\n" .
+        "[CMD] $cmd\n\n" .
+        implode("\n", $cmdOut) . "\n\n" .
+        "[RC] $rc\n";
+
+    file_put_contents($log, $logTxt);
+
+    // DB insert (se $connection esiste da header.php)
+    if (isset($connection) && $connection instanceof mysqli) {
+        $runDirRel = 'risultati/' . $USER_ID . '/' . $ts;
+        $dirEsc = mysqli_real_escape_string($connection, $runDirRel);
+        $rcInt = (int)$rc;
+        mysqli_query($connection, "INSERT INTO linkage_results (id_user, created_at, path_rel, last_rc)
+                                  VALUES ($USER_ID, NOW(), '$dirEsc', $rcInt)");
     }
-    header('Location: linkage.php'); exit;
+
+    if ($rc === 0 && is_file($out)) {
+        flash_and_redirect('ok', 'Elaborazione completata.');
+    } else {
+        flash_and_redirect('err', 'Elaborazione conclusa con errori. Controlla il log.');
+    }
 }
 
 // === DELETE ===
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete') {
-    if (($_POST['csrf'] ?? '') !== $_SESSION['csrf']) {
-        $_SESSION['flash_tipo'] = 'err';
-        $_SESSION['flash_msg']  = 'Richiesta non valida.';
-        header('Location: linkage.php'); exit;
+
+    if (($_POST['csrf'] ?? '') !== ($_SESSION['csrf'] ?? '')) {
+        flash_and_redirect('err', 'Richiesta non valida.');
     }
+
     $dir = basename($_POST['dir'] ?? '');
     if ($dir) {
         $target = $RESULTS_BASE . '/' . $dir;
+
         if (is_dir($target)) {
             $rii = new RecursiveIteratorIterator(
                 new RecursiveDirectoryIterator($target, FilesystemIterator::SKIP_DOTS),
                 RecursiveIteratorIterator::CHILD_FIRST
             );
             foreach ($rii as $file) {
-                $file->isDir() ? rmdir($file) : unlink($file);
+                $file->isDir() ? @rmdir($file->getPathname()) : @unlink($file->getPathname());
             }
-            rmdir($target);
+            @rmdir($target);
 
-            $dirRel = 'risultati/' . $USER_ID . '/' . $dir;
-            $dirRelEsc = mysqli_real_escape_string($connection, $dirRel);
-            mysqli_query($connection, "DELETE FROM linkage_results WHERE id_user=$USER_ID AND path_rel='$dirRelEsc'");
+            if (isset($connection) && $connection instanceof mysqli) {
+                $dirRel = 'risultati/' . $USER_ID . '/' . $dir;
+                $dirRelEsc = mysqli_real_escape_string($connection, $dirRel);
+                mysqli_query($connection, "DELETE FROM linkage_results WHERE id_user=$USER_ID AND path_rel='$dirRelEsc'");
+            }
 
-            $_SESSION['flash_tipo'] = 'ok';
-            $_SESSION['flash_msg']  = 'Risultato eliminato.';
+            flash_and_redirect('ok', 'Risultato eliminato.');
         }
     }
-    header('Location: linkage.php'); exit;
+
+    flash_and_redirect('err', 'Elemento non valido.');
 }
 ?>
 
 <h1 class="h4 mb-3">Linkage (Word → URN Normattiva)</h1>
 
 <?php
-// Mostra eventuale messaggio
 if (!empty($_SESSION['flash_msg'])) {
-    $classe = ($_SESSION['flash_tipo'] === 'ok') ? 'alert-success' : 'alert-danger';
+    $classe = (($_SESSION['flash_tipo'] ?? '') === 'ok') ? 'alert-success' : 'alert-danger';
     echo "<div class='alert $classe'>" . htmlspecialchars($_SESSION['flash_msg'], ENT_QUOTES, 'UTF-8') . "</div>";
     unset($_SESSION['flash_msg'], $_SESSION['flash_tipo']);
 }
@@ -141,7 +181,6 @@ if (!empty($_SESSION['flash_msg'])) {
 </form>
 
 <?php
-// Lista risultati
 $entries = [];
 if (is_dir($RESULTS_BASE)) {
     foreach (array_diff(scandir($RESULTS_BASE), ['.', '..']) as $d) {
@@ -156,12 +195,12 @@ if (is_dir($RESULTS_BASE)) {
   <div class="text-muted">Nessun risultato.</div>
 <?php else: ?>
   <div class="row g-3">
-  <?php foreach ($entries as $d): 
+  <?php foreach ($entries as $d):
       $dir = $RESULTS_BASE . '/' . $d;
-      $input = file_exists("$dir/input.docx");
-      $output= file_exists("$dir/output.docx");
-      $log   = file_exists("$dir/exec.log");
-      $rel   = 'risultati/' . $USER_ID . '/' . $d;
+      $hasInput  = is_file("$dir/input.docx");
+      $hasOutput = is_file("$dir/output.docx");
+      $hasLog    = is_file("$dir/exec.log");
+      $rel       = 'risultati/' . $USER_ID . '/' . $d;
   ?>
     <div class="col-md-6">
       <div class="file-tile">
@@ -175,9 +214,9 @@ if (is_dir($RESULTS_BASE)) {
           </form>
         </div>
         <ul class="list-unstyled mb-2">
-          <li><?= $input ? '✅' : '❌' ?> <a href="<?= $rel ?>/input.docx" target="_blank">input.docx</a></li>
-          <li><?= $output ? '✅' : '❌' ?> <a href="<?= $rel ?>/output.docx" target="_blank">output.docx</a></li>
-          <li><?= $log    ? '✅' : '❌' ?> <a href="<?= $rel ?>/exec.log" target="_blank">exec.log</a></li>
+          <li><?= $hasInput ? '✅' : '❌' ?> <a href="<?= $rel ?>/input.docx" target="_blank">input.docx</a></li>
+          <li><?= $hasOutput ? '✅' : '❌' ?> <a href="<?= $rel ?>/output.docx" target="_blank">output.docx</a></li>
+          <li><?= $hasLog ? '✅' : '❌' ?> <a href="<?= $rel ?>/exec.log" target="_blank">exec.log</a></li>
         </ul>
         <div class="small text-muted">Percorso: <code><?= htmlspecialchars($rel, ENT_QUOTES, 'UTF-8') ?></code></div>
       </div>

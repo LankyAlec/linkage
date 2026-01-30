@@ -11,7 +11,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         $uid = (int)$u['id'];
         mysqli_query($connection, "INSERT INTO reset_tokens (id_user, token, created_at, used) VALUES ($uid, '$tok_esc', NOW(), 0)");
         // TODO: invio email vera. Per ora flash con link:
-        flash('ok', "Link reset (demo): password_reset.php?token=$token");
+        flash('ok', "Link reset (demo): reset_password.php?token=$token");
     } else {
         // Non rivelare se l'email esiste
         flash('ok','Se l’email è presente, riceverai un link di reset.');
