@@ -1,0 +1,3 @@
+sys.argv: ['/volume1/web/avvocati/py/elabora_docx.py', '/volume1/web/avvocati/risultati/1/2026_01_29_20_33_55/input.docx', '/volume1/web/avvocati/risultati/1/TEST_OUT.docx', '/volume1/web/avvocati/urn_index.json']
+>>> Cerco urn_index.json in: /volume1/web/avvocati/urn_index.json
+❌ File URN index non trovato: /volume1/web/avvocati/urn_index.json

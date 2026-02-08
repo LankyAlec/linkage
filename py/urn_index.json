@@ -1,0 +1,13 @@
+{
+  "c.c.":   { "tipo": "regio.decreto", "numero": "262", "data": "1942-03-16" },
+  "cc":     { "tipo": "regio.decreto", "numero": "262", "data": "1942-03-16" },
+
+  "c.p.":   { "tipo": "regio.decreto", "numero": "1398", "data": "1930-10-19" },
+  "cp":     { "tipo": "regio.decreto", "numero": "1398", "data": "1930-10-19" },
+
+  "c.p.c.": { "tipo": "regio.decreto", "numero": "1443", "data": "1940-10-28" },
+  "cpc":    { "tipo": "regio.decreto", "numero": "1443", "data": "1940-10-28" },
+
+  "c.p.p.": { "tipo": "decreto.del.presidente.della.repubblica", "numero": "447", "data": "1988-09-22" },
+  "cpp":    { "tipo": "decreto.del.presidente.della.repubblica", "numero": "447", "data": "1988-09-22" }
+}

@@ -1,0 +1,16 @@
+==============================
+[WHEN] 2026-01-31T20:05:17+01:00
+==============================
+[ORIGINAL_NAME] Ricorso copia.docx
+[INPUT_SAVED_AS] Ricorso_copia.docx
+[DOCX_USED] Ricorso_copia.docx
+[LINKS_CREATED] 5
+[CMD] '/volume1/web/avvocati/venv/bin/python' '/volume1/web/avvocati/py/linka_normattiva.py' '/volume1/web/avvocati/risultati/1/2026_01_31_20_05_16/Ricorso_copia.docx' '/volume1/web/avvocati/risultati/1/2026_01_31_20_05_16/linked_Ricorso_copia.docx' '/volume1/web/avvocati/py/urn_index.json' 2>&1
+
+---------- OUTPUT ----------
+LINKS_CREATED=5
+LINKS_NORMATTIVA=5
+LINKS_FILES=0
+----------------------------
+
+[RC] 0

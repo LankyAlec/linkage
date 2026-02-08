@@ -1,0 +1,6 @@
+REPORT ELABORAZIONE
+===================
+
+NON RISOLTO (aggiungi in atti_index.json): l 241/1990
+NON RISOLTO (aggiungi in atti_index.json): dlgs 50/2016
+NON RISOLTO (aggiungi in atti_index.json): dm 55/2014

@@ -1,0 +1,27 @@
+{
+  "c.p.": {
+    "tipo": "regio.decreto",
+    "data": "1930-10-19",
+    "numero": "1398"
+  },
+  "c.p.p.": {
+    "tipo": "decreto.del.presidente.della.repubblica",
+    "data": "1988-09-22",
+    "numero": "447"
+  },
+  "c.c.": {
+    "tipo": "regio.decreto",
+    "data": "1942-03-16",
+    "numero": "262"
+  },
+  "c.p.c.": {
+    "tipo": "regio.decreto",
+    "data": "1940-10-28",
+    "numero": "1443"
+  },
+  "cost.": { 
+    "tipo": "costituzione", 
+    "data": "1947-12-27", 
+    "numero": "" 
+  }
+}
