@@ -588,7 +588,7 @@ if ($hasDb) {
     $qTot = mysqli_query($connection, "SELECT COUNT(*) AS c FROM linkage_results WHERE id_user=$USER_ID");
     if ($qTot) $total = (int)(mysqli_fetch_assoc($qTot)['c'] ?? 0);
 
-    $q = mysqli_query($connection, "SELECT * FROM linkage_results WHERE id_user=$USER_ID ORDER BY created_at DESC LIMIT $perPage OFFSET $offset");
+    $q = mysqli_query($connection, "SELECT * FROM linkage_results WHERE id_user=$USER_ID ORDER BY id DESC LIMIT $perPage OFFSET $offset");
     if ($q) while ($r = mysqli_fetch_assoc($q)) $rows[] = $r;
 } else {
     $entries = [];
