@@ -1,0 +1,17 @@
+==============================
+[WHEN] 2026-01-31T15:58:21+01:00
+==============================
+[ORIGINAL_NAME] test_linkage_normattiva.docx
+[INPUT_SAVED_AS] test_linkage_normattiva.docx
+[DOCX_USED] test_linkage_normattiva.docx
+[LINKS_CREATED] 3
+[CMD] '/volume1/web/avvocati/venv/bin/python' '/volume1/web/avvocati/py/linka_normattiva.py' '/volume1/web/avvocati/risultati/1/2026_01_31_15_58_20/test_linkage_normattiva.docx' '/volume1/web/avvocati/risultati/1/2026_01_31_15_58_20/linked_test_linkage_normattiva.docx' '/volume1/web/avvocati/py/urn_index.json' 2>&1
+
+---------- OUTPUT ----------
+LINKS_CREATED=3
+LINKS_NORMATTIVA=0
+LINKS_ATTI=3
+LINKS_FILES=0
+----------------------------
+
+[RC] 0
