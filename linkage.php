@@ -142,6 +142,20 @@ function uniq_name_in_dir(string $dir, string $filename): string {
     return $candidate;
 }
 
+function empty_links_payload_json(): string {
+    return json_encode([
+        'counts' => ['total' => 0, 'normattiva' => 0, 'files' => 0],
+        'items'  => [],
+    ], JSON_UNESCAPED_UNICODE);
+}
+
+function empty_warnings_payload_json(): string {
+    return json_encode([
+        'counts' => ['total' => 0],
+        'items'  => [],
+    ], JSON_UNESCAPED_UNICODE);
+}
+
 /**
  * Ricava data/ora:
  * - se created_at è DATETIME -> usa quello
@@ -181,10 +195,11 @@ function extract_date_time(string $createdAt, string $dirName): array {
  * UPSERT su linkage_results (INSERT se non esiste, altrimenti UPDATE)
  * Scrive errori DB in exec.log (così capisci subito perché non aggiorna)
  */
-function db_upsert_result(mysqli $conn, int $USER_ID, string $runDirRel, int $rc, string $origNameDisplay, int $linksFound, string $warningJson, bool $hasColOriginal, bool $hasColLinks, bool $hasColWarning, string $logPathAbs): void {
+function db_upsert_result(mysqli $conn, int $USER_ID, string $runDirRel, int $rc, string $origNameDisplay, string $linksFoundJson, string $warningJson, bool $hasColOriginal, bool $hasColLinks, bool $hasColWarning, string $logPathAbs): void {
     $dirEsc = mysqli_real_escape_string($conn, $runDirRel);
     $rcInt  = (int)$rc;
     $nameEsc = mysqli_real_escape_string($conn, $origNameDisplay);
+    $linksEsc = mysqli_real_escape_string($conn, $linksFoundJson);
     $warningEsc = mysqli_real_escape_string($conn, $warningJson);
 
     $q = mysqli_query($conn, "SELECT id FROM linkage_results WHERE id_user=$USER_ID AND path_rel='$dirEsc' LIMIT 1");
@@ -193,7 +208,7 @@ function db_upsert_result(mysqli $conn, int $USER_ID, string $runDirRel, int $rc
     if ($exists) {
         $sets = ["last_rc=$rcInt"];
         if ($hasColOriginal) $sets[] = "original_name='$nameEsc'";
-        if ($hasColLinks)    $sets[] = "links_found=" . (int)$linksFound;
+        if ($hasColLinks)    $sets[] = "links_found='$linksEsc'";
         if ($hasColWarning)  $sets[] = "warning='$warningEsc'";
 
         $sql = "UPDATE linkage_results SET " . implode(", ", $sets) . " WHERE id_user=$USER_ID AND path_rel='$dirEsc'";
@@ -206,7 +221,7 @@ function db_upsert_result(mysqli $conn, int $USER_ID, string $runDirRel, int $rc
     $vals = ["$USER_ID", "NOW()", "'$dirEsc'", "$rcInt"];
 
     if ($hasColOriginal) { $cols[] = "original_name"; $vals[] = "'$nameEsc'"; }
-    if ($hasColLinks)    { $cols[] = "links_found";   $vals[] = (string)(int)$linksFound; }
+    if ($hasColLinks)    { $cols[] = "links_found";   $vals[] = "'$linksEsc'"; }
     if ($hasColWarning)  { $cols[] = "warning";       $vals[] = "'$warningEsc'"; }
 
     $sql = "INSERT INTO linkage_results (" . implode(",", $cols) . ") VALUES (" . implode(",", $vals) . ")";
@@ -274,7 +289,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'uploa
 
         if (!class_exists('ZipArchive')) {
             file_put_contents($log, "[RC] 98\n[ERROR] Estensione PHP zip (ZipArchive) non disponibile.\n");
-            if ($hasDb) db_upsert_result($connection, $USER_ID, $runDirRel, 98, $origNameDisplay, 0, '[]', $hasColOriginal, $hasColLinks, $hasColWarning, $log);
+            if ($hasDb) db_upsert_result($connection, $USER_ID, $runDirRel, 98, $origNameDisplay, empty_links_payload_json(), empty_warnings_payload_json(), $hasColOriginal, $hasColLinks, $hasColWarning, $log);
             flash_and_redirect('err', 'ZipArchive non disponibile sul server. Abilita l’estensione PHP "zip".');
         }
 
@@ -288,7 +303,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'uploa
 
         if ($rcZip !== true) {
             file_put_contents($log, "[RC] 97\n[ERROR] Impossibile aprire lo zip.\n");
-            if ($hasDb) db_upsert_result($connection, $USER_ID, $runDirRel, 97, $origNameDisplay, 0, '[]', $hasColOriginal, $hasColLinks, $hasColWarning, $log);
+            if ($hasDb) db_upsert_result($connection, $USER_ID, $runDirRel, 97, $origNameDisplay, empty_links_payload_json(), empty_warnings_payload_json(), $hasColOriginal, $hasColLinks, $hasColWarning, $log);
             flash_and_redirect('err', 'Impossibile aprire lo zip.');
         }
 
@@ -358,11 +373,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'uploa
 
         // DB "pending" (rc=100)
         file_put_contents($log, "[RC] 100\n[PENDING] Attesa scelta DOCX\n");
-        if ($hasDb) db_upsert_result($connection, $USER_ID, $runDirRel, 100, $origNameDisplay, 0, '[]', $hasColOriginal, $hasColLinks, $hasColWarning, $log);
+        if ($hasDb) db_upsert_result($connection, $USER_ID, $runDirRel, 100, $origNameDisplay, empty_links_payload_json(), empty_warnings_payload_json(), $hasColOriginal, $hasColLinks, $hasColWarning, $log);
 
         if (count($docxList) === 0) {
             file_put_contents($log, "\n[ERROR] Nessun DOCX nello zip.\n", FILE_APPEND);
-            if ($hasDb) db_upsert_result($connection, $USER_ID, $runDirRel, 99, $origNameDisplay, 0, '[]', $hasColOriginal, $hasColLinks, $hasColWarning, $log);
+            if ($hasDb) db_upsert_result($connection, $USER_ID, $runDirRel, 99, $origNameDisplay, empty_links_payload_json(), empty_warnings_payload_json(), $hasColOriginal, $hasColLinks, $hasColWarning, $log);
             flash_and_redirect('err', 'Lo .zip non contiene alcun file .docx.');
         }
 
@@ -401,19 +416,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'uploa
         exec($cmd, $cmdOut, $rc);
 
         $linksCreated = 0;
-        $warningsJson = '[]';
+        $linksNorm = 0;
+        $linksFiles = 0;
+        $linksFoundJson = empty_links_payload_json();
+        $warningsJson = empty_warnings_payload_json();
         $warningsCount = 0;
         foreach ($cmdOut as $line) {
-            if (preg_match('/^LINKS_CREATED=(\d+)/', trim($line), $m)) { $linksCreated = (int)$m[1]; break; }
+            if (preg_match('/^LINKS_CREATED=(\d+)/', trim($line), $m)) { $linksCreated = (int)$m[1]; }
+            if (preg_match('/^LINKS_NORMATTIVA=(\d+)/', trim($line), $m)) { $linksNorm = (int)$m[1]; }
+            if (preg_match('/^LINKS_FILES=(\d+)/', trim($line), $m)) { $linksFiles = (int)$m[1]; }
         }
         foreach ($cmdOut as $line) {
             $line = trim($line);
+            if (preg_match('/^LINKS_FOUND_JSON=(.+)$/', $line, $m)) {
+                $linksFoundJson = $m[1];
+            }
             if (preg_match('/^WARNINGS_JSON=(.+)$/', $line, $m)) {
                 $warningsJson = $m[1];
                 $decoded = json_decode($warningsJson, true);
-                if (is_array($decoded)) $warningsCount = count($decoded);
+                if (is_array($decoded) && isset($decoded['counts']['total'])) {
+                    $warningsCount = (int)$decoded['counts']['total'];
+                } elseif (is_array($decoded)) {
+                    $warningsCount = count($decoded);
+                }
             }
             if (preg_match('/^WARNINGS_COUNT=(\d+)/', $line, $m)) { $warningsCount = (int)$m[1]; }
+        }
+
+        if ($linksFoundJson === '' || $linksFoundJson === '[]') {
+            $linksFoundJson = json_encode([
+                'counts' => [
+                    'total' => $linksCreated,
+                    'normattiva' => $linksNorm,
+                    'files' => $linksFiles,
+                ],
+                'items' => [],
+            ], JSON_UNESCAPED_UNICODE);
         }
 
         $logTxt =
@@ -425,6 +463,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'uploa
             "[DOCX_USED] " . basename($docxPathAbs) . "\n" .
             "[LINKS_CREATED] $linksCreated\n" .
             "[WARNINGS_COUNT] $warningsCount\n" .
+            "[LINKS_FOUND_JSON] $linksFoundJson\n" .
             "[WARNINGS_JSON] $warningsJson\n" .
             "[CMD] $cmd\n\n" .
             "---------- OUTPUT ----------\n" . implode("\n", $cmdOut) . "\n" .
@@ -432,7 +471,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'uploa
             "[RC] $rc\n";
         file_put_contents($log, $logTxt);
 
-        if ($hasDb) db_upsert_result($connection, $USER_ID, $runDirRel, $rc, $origNameDisplay, $linksCreated, $warningsJson, $hasColOriginal, $hasColLinks, $hasColWarning, $log);
+        if ($hasDb) db_upsert_result($connection, $USER_ID, $runDirRel, $rc, $origNameDisplay, $linksFoundJson, $warningsJson, $hasColOriginal, $hasColLinks, $hasColWarning, $log);
 
         if ($rc === 0 && is_file($out)) flash_and_redirect('ok', 'Elaborazione completata con successo.');
         flash_and_redirect('err', 'Elaborazione conclusa con errori. Apri il log per i dettagli.');
@@ -507,19 +546,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'proce
     exec($cmd, $cmdOut, $rc);
 
     $linksCreated = 0;
-    $warningsJson = '[]';
+    $linksNorm = 0;
+    $linksFiles = 0;
+    $linksFoundJson = empty_links_payload_json();
+    $warningsJson = empty_warnings_payload_json();
     $warningsCount = 0;
     foreach ($cmdOut as $line) {
-        if (preg_match('/^LINKS_CREATED=(\d+)/', trim($line), $m)) { $linksCreated = (int)$m[1]; break; }
+        if (preg_match('/^LINKS_CREATED=(\d+)/', trim($line), $m)) { $linksCreated = (int)$m[1]; }
+        if (preg_match('/^LINKS_NORMATTIVA=(\d+)/', trim($line), $m)) { $linksNorm = (int)$m[1]; }
+        if (preg_match('/^LINKS_FILES=(\d+)/', trim($line), $m)) { $linksFiles = (int)$m[1]; }
     }
     foreach ($cmdOut as $line) {
         $line = trim($line);
+        if (preg_match('/^LINKS_FOUND_JSON=(.+)$/', $line, $m)) {
+            $linksFoundJson = $m[1];
+        }
         if (preg_match('/^WARNINGS_JSON=(.+)$/', $line, $m)) {
             $warningsJson = $m[1];
             $decoded = json_decode($warningsJson, true);
-            if (is_array($decoded)) $warningsCount = count($decoded);
+            if (is_array($decoded) && isset($decoded['counts']['total'])) {
+                $warningsCount = (int)$decoded['counts']['total'];
+            } elseif (is_array($decoded)) {
+                $warningsCount = count($decoded);
+            }
         }
         if (preg_match('/^WARNINGS_COUNT=(\d+)/', $line, $m)) { $warningsCount = (int)$m[1]; }
+    }
+
+    if ($linksFoundJson === '' || $linksFoundJson === '[]') {
+        $linksFoundJson = json_encode([
+            'counts' => [
+                'total' => $linksCreated,
+                'normattiva' => $linksNorm,
+                'files' => $linksFiles,
+            ],
+            'items' => [],
+        ], JSON_UNESCAPED_UNICODE);
     }
 
     // aggiorna manifest main_docx
@@ -535,6 +597,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'proce
         "[DOCX_USED] " . basename($docxPathAbs) . "\n" .
         "[LINKS_CREATED] $linksCreated\n" .
         "[WARNINGS_COUNT] $warningsCount\n" .
+        "[LINKS_FOUND_JSON] $linksFoundJson\n" .
         "[WARNINGS_JSON] $warningsJson\n" .
         "[CMD] $cmd\n\n" .
         "---------- OUTPUT ----------\n" . implode("\n", $cmdOut) . "\n" .
@@ -542,7 +605,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'proce
         "[RC] $rc\n";
     file_put_contents($log, $logTxt);
 
-    if ($hasDb) db_upsert_result($connection, $USER_ID, $runDirRel, $rc, $origNameDisplay, $linksCreated, $warningsJson, $hasColOriginal, $hasColLinks, $hasColWarning, $log);
+    if ($hasDb) db_upsert_result($connection, $USER_ID, $runDirRel, $rc, $origNameDisplay, $linksFoundJson, $warningsJson, $hasColOriginal, $hasColLinks, $hasColWarning, $log);
 
     if ($rc === 0 && is_file($out)) flash_and_redirect('ok', 'Elaborazione completata con successo.');
     flash_and_redirect('err', 'Elaborazione conclusa con errori. Apri il log per i dettagli.');
@@ -821,13 +884,43 @@ if (!empty($_SESSION['flash_msg'])) {
               $isError = !($rc === 0 && $hasOutput);
 
               $origName = (string)($r['original_name'] ?? '—');
-              $links_found = isset($r['links_found']) ? (string)$r['links_found'] : '0';
-              if ($links_found === '') $links_found = '0';
+
+              $linksPayload = null;
+              $linksItems = [];
+              $linksCount = 0;
+              $linksFoundRaw = isset($r['links_found']) ? (string)$r['links_found'] : '';
+              if ($linksFoundRaw !== '') {
+                  $decodedLinks = json_decode($linksFoundRaw, true);
+                  if (is_array($decodedLinks)) {
+                      $linksPayload = $decodedLinks;
+                      $linksItems = (array)($decodedLinks['items'] ?? []);
+                      if (isset($decodedLinks['counts']['total'])) {
+                          $linksCount = (int)$decodedLinks['counts']['total'];
+                      } elseif (is_numeric($linksFoundRaw)) {
+                          $linksCount = (int)$linksFoundRaw;
+                      } else {
+                          $linksCount = count($linksItems);
+                      }
+                  } elseif (is_numeric($linksFoundRaw)) {
+                      $linksCount = (int)$linksFoundRaw;
+                  }
+              }
+
+              $warningsPayload = null;
+              $warningsItems = [];
               $warnings_count = 0;
               if ($hasColWarning) {
                   $warningJson = (string)($r['warning'] ?? '');
                   $decodedWarnings = json_decode($warningJson, true);
-                  if (is_array($decodedWarnings)) $warnings_count = count($decodedWarnings);
+                  if (is_array($decodedWarnings)) {
+                      $warningsPayload = $decodedWarnings;
+                      $warningsItems = (array)($decodedWarnings['items'] ?? []);
+                      if (isset($decodedWarnings['counts']['total'])) {
+                          $warnings_count = (int)$decodedWarnings['counts']['total'];
+                      } else {
+                          $warnings_count = count($warningsItems);
+                      }
+                  }
               }
 
               $isZip = ($hasInput && $inputRel && str_ends_with(strtolower($inputRel), '.zip'));
@@ -844,7 +937,19 @@ if (!empty($_SESSION['flash_msg'])) {
                   <?= h($origName) ?>
                 <?php endif; ?>
               </td>
-              <td><?= h($links_found) ?></td>
+              <td>
+                <?php if (!empty($linksItems)): ?>
+                  <button
+                    type="button"
+                    class="btn btn-link p-0 js-links-details"
+                    data-details="<?= h(json_encode($linksPayload, JSON_UNESCAPED_UNICODE)) ?>"
+                    data-title="Dettaglio link">
+                    <?= (int)$linksCount ?>
+                  </button>
+                <?php else: ?>
+                  <?= (int)$linksCount ?>
+                <?php endif; ?>
+              </td>
 
               <td>
                 <div class="doc-icons">
@@ -876,7 +981,19 @@ if (!empty($_SESSION['flash_msg'])) {
                 </div>
               </td>
 
-              <td><?= (int)$warnings_count ?></td>
+              <td>
+                <?php if (!empty($warningsItems)): ?>
+                  <button
+                    type="button"
+                    class="btn btn-link p-0 js-warnings-details"
+                    data-details="<?= h(json_encode($warningsPayload, JSON_UNESCAPED_UNICODE)) ?>"
+                    data-title="Dettaglio warning">
+                    <?= (int)$warnings_count ?>
+                  </button>
+                <?php else: ?>
+                  <?= (int)$warnings_count ?>
+                <?php endif; ?>
+              </td>
 
               <td><?= badge_status($rc, $hasOutput, $dirName) ?></td>
 
@@ -970,6 +1087,19 @@ if (!empty($_SESSION['flash_msg'])) {
 </div>
 <?php endif; ?>
 
+<div class="modal fade" id="detailsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Dettagli</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="text-muted">Nessun dettaglio disponibile.</div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- FilePond -->
 <link href="https://unpkg.com/filepond@^4/dist/filepond.css" rel="stylesheet" />
@@ -1001,6 +1131,100 @@ document.addEventListener('DOMContentLoaded', () => {
   if (chooseModal && window.bootstrap && bootstrap.Modal) {
     bootstrap.Modal.getOrCreateInstance(chooseModal).show();
   }
+
+  // =========================
+  // DETAILS MODAL (links/warnings)
+  // =========================
+  const detailsModal = document.getElementById('detailsModal');
+  const detailsTitle = detailsModal?.querySelector('.modal-title');
+  const detailsBody = detailsModal?.querySelector('.modal-body');
+
+  const renderTable = (headers, rows) => {
+    const table = document.createElement('table');
+    table.className = 'table table-sm table-striped align-middle mb-0';
+    const thead = document.createElement('thead');
+    thead.innerHTML = `<tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>`;
+    const tbody = document.createElement('tbody');
+    rows.forEach((cells) => {
+      const tr = document.createElement('tr');
+      cells.forEach((cell) => {
+        const td = document.createElement('td');
+        if (cell?.url) {
+          const a = document.createElement('a');
+          a.href = cell.url;
+          a.target = '_blank';
+          a.rel = 'noopener';
+          a.textContent = cell.text ?? cell.url;
+          td.appendChild(a);
+        } else {
+          td.textContent = cell?.text ?? '';
+        }
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(thead);
+    table.appendChild(tbody);
+    return table;
+  };
+
+  const openDetails = (title, payload, type) => {
+    if (!detailsModal || !detailsBody || !detailsTitle) return;
+    detailsTitle.textContent = title;
+    detailsBody.innerHTML = '';
+
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+    if (!items.length) {
+      const empty = document.createElement('div');
+      empty.className = 'text-muted';
+      empty.textContent = 'Nessun dettaglio disponibile.';
+      detailsBody.appendChild(empty);
+      bootstrap.Modal.getOrCreateInstance(detailsModal).show();
+      return;
+    }
+
+    if (type === 'links') {
+      const rows = items.map((item) => ([
+        { text: item.text ?? '' },
+        { text: String(item.page ?? '—') },
+        { text: item.type ?? '' },
+        { url: item.url ?? '', text: item.url ?? '' },
+      ]));
+      detailsBody.appendChild(renderTable(['Testo', 'Pagina', 'Tipo', 'URL'], rows));
+    } else {
+      const rows = items.map((item) => ([
+        { text: item.ref ?? '' },
+        { text: item.numero ?? '' },
+        { text: item.anno ?? '' },
+        { text: String(item.page ?? '—') },
+      ]));
+      detailsBody.appendChild(renderTable(['Riferimento', 'Numero', 'Anno', 'Pagina'], rows));
+    }
+
+    bootstrap.Modal.getOrCreateInstance(detailsModal).show();
+  };
+
+  document.querySelectorAll('.js-links-details').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      try {
+        const payload = JSON.parse(btn.dataset.details || '{}');
+        openDetails(btn.dataset.title || 'Dettaglio link', payload, 'links');
+      } catch (e) {
+        openDetails('Dettaglio link', { items: [] }, 'links');
+      }
+    });
+  });
+
+  document.querySelectorAll('.js-warnings-details').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      try {
+        const payload = JSON.parse(btn.dataset.details || '{}');
+        openDetails(btn.dataset.title || 'Dettaglio warning', payload, 'warnings');
+      } catch (e) {
+        openDetails('Dettaglio warning', { items: [] }, 'warnings');
+      }
+    });
+  });
 
   // =========================
   // FILEPOND

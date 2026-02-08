@@ -264,6 +264,14 @@ def _apply_force_hyperlink_style(rPr):
         rPr.append(u)
     u.set(qn("w:val"), "single")
 
+    # assicurati che non sia "nascosto"
+    vanish = rPr.find(qn("w:vanish"))
+    if vanish is not None:
+        rPr.remove(vanish)
+    spec_vanish = rPr.find(qn("w:specVanish"))
+    if spec_vanish is not None:
+        rPr.remove(spec_vanish)
+
     # colore blu
     c = rPr.find(qn("w:color"))
     if c is None:
@@ -696,11 +704,19 @@ links_found_payload = {
 log(f"✅ COMPLETATO – link creati: {total_links} (norm={links_norm}, files={links_files})")
 log("LINKS_FOUND_JSON=" + json.dumps(links_found_payload, ensure_ascii=False))
 
+# JSON finale per warning (counts + items)
+warnings_payload = {
+    "counts": {
+        "total": len(warnings)
+    },
+    "items": warnings
+}
+
 # STDOUT (per PHP/controller)
 print(f"LINKS_CREATED={total_links}")
 print(f"LINKS_NORMATTIVA={links_norm}")
 print(f"LINKS_FILES={links_files}")
-print("WARNINGS_JSON=" + json.dumps(warnings, ensure_ascii=False))
+print("WARNINGS_JSON=" + json.dumps(warnings_payload, ensure_ascii=False))
 print(f"WARNINGS_COUNT={len(warnings)}")
 
 # >>> QUESTO è quello che vuoi mettere nel DB campo links_found <<<
