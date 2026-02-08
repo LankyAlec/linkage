@@ -1,13 +1,29 @@
 {
-  "c.c.":   { "tipo": "regio.decreto", "numero": "262", "data": "1942-03-16" },
-  "cc":     { "tipo": "regio.decreto", "numero": "262", "data": "1942-03-16" },
+  "c.c.":   { "authority": "stato", "tipo": "regio.decreto", "numero": "262",  "data": "1942-03-16" },
+  "cc":     { "authority": "stato", "tipo": "regio.decreto", "numero": "262",  "data": "1942-03-16" },
 
-  "c.p.":   { "tipo": "regio.decreto", "numero": "1398", "data": "1930-10-19" },
-  "cp":     { "tipo": "regio.decreto", "numero": "1398", "data": "1930-10-19" },
+  "c.p.":   { "authority": "stato", "tipo": "regio.decreto", "numero": "1398", "data": "1930-10-19" },
+  "cp":     { "authority": "stato", "tipo": "regio.decreto", "numero": "1398", "data": "1930-10-19" },
 
-  "c.p.c.": { "tipo": "regio.decreto", "numero": "1443", "data": "1940-10-28" },
-  "cpc":    { "tipo": "regio.decreto", "numero": "1443", "data": "1940-10-28" },
+  "c.p.c.": { "authority": "stato", "tipo": "regio.decreto", "numero": "1443", "data": "1940-10-28" },
+  "cpc":    { "authority": "stato", "tipo": "regio.decreto", "numero": "1443", "data": "1940-10-28" },
 
-  "c.p.p.": { "tipo": "decreto.del.presidente.della.repubblica", "numero": "447", "data": "1988-09-22" },
-  "cpp":    { "tipo": "decreto.del.presidente.della.repubblica", "numero": "447", "data": "1988-09-22" }
+  "c.p.p.": { "authority": "stato", "tipo": "decreto.del.presidente.della.repubblica", "numero": "447", "data": "1988-09-22" },
+  "cpp":    { "authority": "stato", "tipo": "decreto.del.presidente.della.repubblica", "numero": "447", "data": "1988-09-22" },
+
+  "cost.":  { "authority": "stato", "tipo": "costituzione", "numero": "", "data": "1947-12-27" },
+  "cost":   { "authority": "stato", "tipo": "costituzione", "numero": "", "data": "1947-12-27" },
+  "costituzione": { "authority": "stato", "tipo": "costituzione", "numero": "", "data": "1947-12-27" },
+
+  "l.241/1990":   { "authority": "stato", "tipo": "legge", "numero": "241", "data": "1990-08-07" },
+  "l241/1990":    { "authority": "stato", "tipo": "legge", "numero": "241", "data": "1990-08-07" },
+  "legge241/1990":{ "authority": "stato", "tipo": "legge", "numero": "241", "data": "1990-08-07" },
+
+  "d.lgs.50/2016": { "authority": "stato", "tipo": "decreto.legislativo", "numero": "50", "data": "2016-04-18" },
+  "dlgs.50/2016":  { "authority": "stato", "tipo": "decreto.legislativo", "numero": "50", "data": "2016-04-18" },
+  "dlgs50/2016":   { "authority": "stato", "tipo": "decreto.legislativo", "numero": "50", "data": "2016-04-18" },
+
+  "d.m.55/2014":  { "authority": "ministero.giustizia", "tipo": "decreto", "numero": "55", "data": "2014-03-10" },
+  "dm.55/2014":   { "authority": "ministero.giustizia", "tipo": "decreto", "numero": "55", "data": "2014-03-10" },
+  "dm55/2014":    { "authority": "ministero.giustizia", "tipo": "decreto", "numero": "55", "data": "2014-03-10" }
 }
