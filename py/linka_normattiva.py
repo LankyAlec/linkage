@@ -9,6 +9,8 @@ import copy
 from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
+from docx.table import Table
+from docx.section import Section
 
 # =========================
 # LOG
@@ -245,19 +247,16 @@ norm_rules = [
 # DOCX UTILS (STILE PRESERVATO)
 # =========================
 def _ensure_text_preserve(t_el, text):
-    # Word mangia spazi ai bordi se non setti xml:space="preserve"
     if text.startswith(" ") or text.endswith(" "):
         t_el.set(qn("xml:space"), "preserve")
 
 def _copy_rPr_from_run(run):
-    # deep copy di rPr (stile run: bold/italic/underline/colore/font ecc.)
     rPr = run._r.rPr
     if rPr is None:
         return None
     return copy.deepcopy(rPr)
 
 def _apply_force_hyperlink_style(rPr):
-    # forza underline + colore anche se nel template Hyperlink è custom
     # underline
     u = rPr.find(qn("w:u"))
     if u is None:
@@ -299,8 +298,8 @@ def _add_hyperlink_element(paragraph, url, text, template_rPr=None):
 
     hyperlink = OxmlElement("w:hyperlink")
     hyperlink.set(qn("r:id"), r_id)
+    hyperlink.set(qn("w:history"), "1")  # compat
 
-    # rPr copiato dal run originale + forza hyperlink
     rPr = template_rPr if template_rPr is not None else OxmlElement("w:rPr")
     _apply_force_hyperlink_style(rPr)
 
@@ -309,7 +308,6 @@ def _add_hyperlink_element(paragraph, url, text, template_rPr=None):
     paragraph._p.append(hyperlink)
 
 def clear_paragraph_keep_pPr(paragraph):
-    # rimuove tutto tranne pPr (stile paragrafo intatto)
     p = paragraph._p
     for child in list(p):
         if child.tag != qn("w:pPr"):
@@ -472,7 +470,7 @@ file_patterns = compile_file_patterns(file_items)
 def collect_matches(text):
     matches = []
 
-    # Normattiva (codici + cost.)
+    # Normattiva
     for pattern, handler in norm_rules:
         for m in pattern.finditer(text):
             label, link, warning = handler(m)
@@ -521,7 +519,59 @@ def run_has_page_break(run):
     return False
 
 # =========================
-# MAIN (PRESERVA RUN STYLE)
+# ITERA TUTTI I PARAGRAFI (BODY + TABELLE + HEADER/FOOTER)
+# =========================
+def iter_paragraphs_in_container(container):
+    # container: Document, cell, header/footer, ecc.
+    for p in getattr(container, "paragraphs", []):
+        yield p
+    for t in getattr(container, "tables", []):
+        yield from iter_paragraphs_in_table(t)
+
+def iter_paragraphs_in_table(table: Table):
+    for row in table.rows:
+        for cell in row.cells:
+            yield from iter_paragraphs_in_container(cell)
+
+def iter_all_paragraphs(doc: Document):
+    # corpo + tabelle nel corpo
+    yield ("body", None, None, None), from_iter(iter_paragraphs_in_container(doc))
+
+def from_iter(it):
+    # helper per compatibilità con yield tuple + iter
+    for x in it:
+        yield x
+
+def iter_all_paragraphs_with_context(doc: Document):
+    # BODY
+    for p in iter_paragraphs_in_container(doc):
+        yield p, {"context": "body"}
+
+    # HEADER/FOOTER per sezione
+    for si, section in enumerate(doc.sections):
+        # header
+        for p in iter_paragraphs_in_container(section.header):
+            yield p, {"context": "header", "section": si}
+        # footer
+        for p in iter_paragraphs_in_container(section.footer):
+            yield p, {"context": "footer", "section": si}
+
+        # opzionali
+        if hasattr(section, "first_page_header"):
+            for p in iter_paragraphs_in_container(section.first_page_header):
+                yield p, {"context": "first_page_header", "section": si}
+        if hasattr(section, "first_page_footer"):
+            for p in iter_paragraphs_in_container(section.first_page_footer):
+                yield p, {"context": "first_page_footer", "section": si}
+        if hasattr(section, "even_page_header"):
+            for p in iter_paragraphs_in_container(section.even_page_header):
+                yield p, {"context": "even_page_header", "section": si}
+        if hasattr(section, "even_page_footer"):
+            for p in iter_paragraphs_in_container(section.even_page_footer):
+                yield p, {"context": "even_page_footer", "section": si}
+
+# =========================
+# MAIN
 # =========================
 doc = Document(input_path)
 
@@ -529,17 +579,21 @@ total_links = 0
 links_norm = 0
 links_files = 0
 warnings = []
+
+# JSON per DB
+links_items = []  # ogni item: {type, text, url, page, context, section?}
+
+# Pagina "best-effort"
 current_page = 1
 
-for para in doc.paragraphs:
+for para, ctx in iter_all_paragraphs_with_context(doc):
+    # pageBreakBefore: conta come cambio pagina (best-effort)
     if paragraph_has_page_break_before(para):
         current_page += 1
 
-    # se non ci sono run, skip
     if not para.runs:
         continue
 
-    # testo completo (unione dei run)
     runs = list(para.runs)
     full_text = "".join(r.text for r in runs)
 
@@ -552,19 +606,18 @@ for para in doc.paragraphs:
         current_page += len(run_page_breaks)
         continue
 
-    log(f"PARA: {full_text}")
+    log(f"CTX: {ctx} | PARA: {full_text}")
     log(f"MATCHES: {ms}")
 
-    # Costruiamo segmenti basati sul testo, ma scegliamo il rPr “di contesto”
-    # per ogni segmento prendiamo il rPr del run che contiene l’inizio del segmento.
-    # Mappa pos->(run_index, offset)
+    # mappa pos->(run_index, offset)
     pos_map = []
     for i, r in enumerate(runs):
         for j in range(len(r.text)):
             pos_map.append((i, j))
-    # pos_map[k] = (run_idx, char_idx_in_run)
 
     def rPr_at_pos(pos):
+        if not pos_map:
+            return None
         if pos < 0:
             pos = 0
         if pos >= len(pos_map):
@@ -572,19 +625,38 @@ for para in doc.paragraphs:
         ri, _ = pos_map[pos]
         return _copy_rPr_from_run(runs[ri])
 
-    # Ricostruiamo il paragrafo mantenendo pPr (stile paragrafo intatto)
+    # Ricostruisci mantenendo pPr
     clear_paragraph_keep_pPr(para)
 
     last = 0
     for start, end, label, link, typ, warning in ms:
-        # testo “normale” prima del link
+        # testo normale prima
         if start > last:
             chunk = full_text[last:start]
             para._p.append(_make_run_element(chunk, rPr_at_pos(last)))
 
-        # hyperlink: copia stile dal contesto (run in cui inizia il match)
+        # hyperlink
         tpl = rPr_at_pos(start)
         _add_hyperlink_element(para, link, label, tpl)
+
+        # stima pagina per questo link
+        page_for_link = current_page
+        if pos_map:
+            run_index = pos_map[start][0]
+            page_offset = sum(1 for idx in run_page_breaks if idx < run_index)
+            page_for_link = current_page + page_offset
+
+        # salva item json
+        item = {
+            "type": typ,              # "N" o "F"
+            "text": label,            # testo linkato
+            "url": link,              # url
+            "page": page_for_link,    # best-effort
+            "context": ctx.get("context", "body")
+        }
+        if "section" in ctx:
+            item["section"] = ctx["section"]
+        links_items.append(item)
 
         last = end
         total_links += 1
@@ -592,28 +664,46 @@ for para in doc.paragraphs:
             links_norm += 1
         else:
             links_files += 1
+
         if warning:
-            run_index = pos_map[start][0] if pos_map else 0
-            page_offset = sum(1 for idx in run_page_breaks if idx < run_index)
             warning_entry = dict(warning)
-            warning_entry["page"] = current_page + page_offset
+            warning_entry["page"] = page_for_link
             warnings.append(warning_entry)
 
     # testo dopo ultimo match
     if last < len(full_text):
         chunk = full_text[last:]
         para._p.append(_make_run_element(chunk, rPr_at_pos(last)))
+
+    # aggiorna pagina in base a pagebreak run
     current_page += len(run_page_breaks)
 
+# salva doc
 if os.path.exists(output_path):
     os.remove(output_path)
-
 doc.save(output_path)
 
+# JSON finale per DB (links_found)
+links_found_payload = {
+    "counts": {
+        "total": total_links,
+        "normattiva": links_norm,
+        "files": links_files
+    },
+    "items": links_items
+}
+
 log(f"✅ COMPLETATO – link creati: {total_links} (norm={links_norm}, files={links_files})")
+log("LINKS_FOUND_JSON=" + json.dumps(links_found_payload, ensure_ascii=False))
+
+# STDOUT (per PHP/controller)
 print(f"LINKS_CREATED={total_links}")
 print(f"LINKS_NORMATTIVA={links_norm}")
 print(f"LINKS_FILES={links_files}")
 print("WARNINGS_JSON=" + json.dumps(warnings, ensure_ascii=False))
 print(f"WARNINGS_COUNT={len(warnings)}")
+
+# >>> QUESTO è quello che vuoi mettere nel DB campo links_found <<<
+print("LINKS_FOUND_JSON=" + json.dumps(links_found_payload, ensure_ascii=False))
+
 sys.exit(0)
