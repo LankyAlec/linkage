@@ -1,7 +1,7 @@
 <?php
 
-$admin="LankyAlec";
-$password="-Alessio89-";
+$admin="blablabla";
+$password="pwdpwdpwd";
 $nome_db="LawerDB";
 
 $connection = mysqli_connect("localhost", $admin, $password, $nome_db);
