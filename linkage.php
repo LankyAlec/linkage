@@ -73,6 +73,7 @@ function db_has_column(mysqli $conn, string $table, string $column): bool {
 
 $hasColOriginal = $hasDb ? db_has_column($connection, 'linkage_results', 'original_name') : false;
 $hasColLinks    = $hasDb ? db_has_column($connection, 'linkage_results', 'links_found') : false;
+$hasColWarning  = $hasDb ? db_has_column($connection, 'linkage_results', 'warning') : false;
 
 /**
  * Ignora file "spazzatura" tipici Mac/Office e path indesiderati
@@ -180,10 +181,11 @@ function extract_date_time(string $createdAt, string $dirName): array {
  * UPSERT su linkage_results (INSERT se non esiste, altrimenti UPDATE)
  * Scrive errori DB in exec.log (così capisci subito perché non aggiorna)
  */
-function db_upsert_result(mysqli $conn, int $USER_ID, string $runDirRel, int $rc, string $origNameDisplay, int $linksFound, bool $hasColOriginal, bool $hasColLinks, string $logPathAbs): void {
+function db_upsert_result(mysqli $conn, int $USER_ID, string $runDirRel, int $rc, string $origNameDisplay, int $linksFound, string $warningJson, bool $hasColOriginal, bool $hasColLinks, bool $hasColWarning, string $logPathAbs): void {
     $dirEsc = mysqli_real_escape_string($conn, $runDirRel);
     $rcInt  = (int)$rc;
     $nameEsc = mysqli_real_escape_string($conn, $origNameDisplay);
+    $warningEsc = mysqli_real_escape_string($conn, $warningJson);
 
     $q = mysqli_query($conn, "SELECT id FROM linkage_results WHERE id_user=$USER_ID AND path_rel='$dirEsc' LIMIT 1");
     $exists = ($q && mysqli_num_rows($q) > 0);
@@ -192,6 +194,7 @@ function db_upsert_result(mysqli $conn, int $USER_ID, string $runDirRel, int $rc
         $sets = ["last_rc=$rcInt"];
         if ($hasColOriginal) $sets[] = "original_name='$nameEsc'";
         if ($hasColLinks)    $sets[] = "links_found=" . (int)$linksFound;
+        if ($hasColWarning)  $sets[] = "warning='$warningEsc'";
 
         $sql = "UPDATE linkage_results SET " . implode(", ", $sets) . " WHERE id_user=$USER_ID AND path_rel='$dirEsc'";
         $ok = mysqli_query($conn, $sql);
@@ -204,6 +207,7 @@ function db_upsert_result(mysqli $conn, int $USER_ID, string $runDirRel, int $rc
 
     if ($hasColOriginal) { $cols[] = "original_name"; $vals[] = "'$nameEsc'"; }
     if ($hasColLinks)    { $cols[] = "links_found";   $vals[] = (string)(int)$linksFound; }
+    if ($hasColWarning)  { $cols[] = "warning";       $vals[] = "'$warningEsc'"; }
 
     $sql = "INSERT INTO linkage_results (" . implode(",", $cols) . ") VALUES (" . implode(",", $vals) . ")";
     $ok = mysqli_query($conn, $sql);
@@ -270,7 +274,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'uploa
 
         if (!class_exists('ZipArchive')) {
             file_put_contents($log, "[RC] 98\n[ERROR] Estensione PHP zip (ZipArchive) non disponibile.\n");
-            if ($hasDb) db_upsert_result($connection, $USER_ID, $runDirRel, 98, $origNameDisplay, 0, $hasColOriginal, $hasColLinks, $log);
+            if ($hasDb) db_upsert_result($connection, $USER_ID, $runDirRel, 98, $origNameDisplay, 0, '[]', $hasColOriginal, $hasColLinks, $hasColWarning, $log);
             flash_and_redirect('err', 'ZipArchive non disponibile sul server. Abilita l’estensione PHP "zip".');
         }
 
@@ -284,7 +288,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'uploa
 
         if ($rcZip !== true) {
             file_put_contents($log, "[RC] 97\n[ERROR] Impossibile aprire lo zip.\n");
-            if ($hasDb) db_upsert_result($connection, $USER_ID, $runDirRel, 97, $origNameDisplay, 0, $hasColOriginal, $hasColLinks, $log);
+            if ($hasDb) db_upsert_result($connection, $USER_ID, $runDirRel, 97, $origNameDisplay, 0, '[]', $hasColOriginal, $hasColLinks, $hasColWarning, $log);
             flash_and_redirect('err', 'Impossibile aprire lo zip.');
         }
 
@@ -354,11 +358,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'uploa
 
         // DB "pending" (rc=100)
         file_put_contents($log, "[RC] 100\n[PENDING] Attesa scelta DOCX\n");
-        if ($hasDb) db_upsert_result($connection, $USER_ID, $runDirRel, 100, $origNameDisplay, 0, $hasColOriginal, $hasColLinks, $log);
+        if ($hasDb) db_upsert_result($connection, $USER_ID, $runDirRel, 100, $origNameDisplay, 0, '[]', $hasColOriginal, $hasColLinks, $hasColWarning, $log);
 
         if (count($docxList) === 0) {
             file_put_contents($log, "\n[ERROR] Nessun DOCX nello zip.\n", FILE_APPEND);
-            if ($hasDb) db_upsert_result($connection, $USER_ID, $runDirRel, 99, $origNameDisplay, 0, $hasColOriginal, $hasColLinks, $log);
+            if ($hasDb) db_upsert_result($connection, $USER_ID, $runDirRel, 99, $origNameDisplay, 0, '[]', $hasColOriginal, $hasColLinks, $hasColWarning, $log);
             flash_and_redirect('err', 'Lo .zip non contiene alcun file .docx.');
         }
 
@@ -397,8 +401,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'uploa
         exec($cmd, $cmdOut, $rc);
 
         $linksCreated = 0;
+        $warningsJson = '[]';
+        $warningsCount = 0;
         foreach ($cmdOut as $line) {
             if (preg_match('/^LINKS_CREATED=(\d+)/', trim($line), $m)) { $linksCreated = (int)$m[1]; break; }
+        }
+        foreach ($cmdOut as $line) {
+            $line = trim($line);
+            if (preg_match('/^WARNINGS_JSON=(.+)$/', $line, $m)) {
+                $warningsJson = $m[1];
+                $decoded = json_decode($warningsJson, true);
+                if (is_array($decoded)) $warningsCount = count($decoded);
+            }
+            if (preg_match('/^WARNINGS_COUNT=(\d+)/', $line, $m)) { $warningsCount = (int)$m[1]; }
         }
 
         $logTxt =
@@ -409,13 +424,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'uploa
             "[INPUT_SAVED_AS] " . basename($inputPath) . "\n" .
             "[DOCX_USED] " . basename($docxPathAbs) . "\n" .
             "[LINKS_CREATED] $linksCreated\n" .
+            "[WARNINGS_COUNT] $warningsCount\n" .
+            "[WARNINGS_JSON] $warningsJson\n" .
             "[CMD] $cmd\n\n" .
             "---------- OUTPUT ----------\n" . implode("\n", $cmdOut) . "\n" .
             "----------------------------\n\n" .
             "[RC] $rc\n";
         file_put_contents($log, $logTxt);
 
-        if ($hasDb) db_upsert_result($connection, $USER_ID, $runDirRel, $rc, $origNameDisplay, $linksCreated, $hasColOriginal, $hasColLinks, $log);
+        if ($hasDb) db_upsert_result($connection, $USER_ID, $runDirRel, $rc, $origNameDisplay, $linksCreated, $warningsJson, $hasColOriginal, $hasColLinks, $hasColWarning, $log);
 
         if ($rc === 0 && is_file($out)) flash_and_redirect('ok', 'Elaborazione completata con successo.');
         flash_and_redirect('err', 'Elaborazione conclusa con errori. Apri il log per i dettagli.');
@@ -490,8 +507,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'proce
     exec($cmd, $cmdOut, $rc);
 
     $linksCreated = 0;
+    $warningsJson = '[]';
+    $warningsCount = 0;
     foreach ($cmdOut as $line) {
         if (preg_match('/^LINKS_CREATED=(\d+)/', trim($line), $m)) { $linksCreated = (int)$m[1]; break; }
+    }
+    foreach ($cmdOut as $line) {
+        $line = trim($line);
+        if (preg_match('/^WARNINGS_JSON=(.+)$/', $line, $m)) {
+            $warningsJson = $m[1];
+            $decoded = json_decode($warningsJson, true);
+            if (is_array($decoded)) $warningsCount = count($decoded);
+        }
+        if (preg_match('/^WARNINGS_COUNT=(\d+)/', $line, $m)) { $warningsCount = (int)$m[1]; }
     }
 
     // aggiorna manifest main_docx
@@ -506,13 +534,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'proce
         "[ZIP_SAVED_AS] " . (string)($manifest['uploaded_saved'] ?? 'input.zip') . "\n" .
         "[DOCX_USED] " . basename($docxPathAbs) . "\n" .
         "[LINKS_CREATED] $linksCreated\n" .
+        "[WARNINGS_COUNT] $warningsCount\n" .
+        "[WARNINGS_JSON] $warningsJson\n" .
         "[CMD] $cmd\n\n" .
         "---------- OUTPUT ----------\n" . implode("\n", $cmdOut) . "\n" .
         "----------------------------\n\n" .
         "[RC] $rc\n";
     file_put_contents($log, $logTxt);
 
-    if ($hasDb) db_upsert_result($connection, $USER_ID, $runDirRel, $rc, $origNameDisplay, $linksCreated, $hasColOriginal, $hasColLinks, $log);
+    if ($hasDb) db_upsert_result($connection, $USER_ID, $runDirRel, $rc, $origNameDisplay, $linksCreated, $warningsJson, $hasColOriginal, $hasColLinks, $hasColWarning, $log);
 
     if ($rc === 0 && is_file($out)) flash_and_redirect('ok', 'Elaborazione completata con successo.');
     flash_and_redirect('err', 'Elaborazione conclusa con errori. Apri il log per i dettagli.');
@@ -761,6 +791,7 @@ if (!empty($_SESSION['flash_msg'])) {
               <th>Nome</th>
               <th style="width: 120px;">Link inseriti</th>
               <th style="width: 220px;">Documenti</th>
+              <th style="width: 90px;">Warning</th>
               <th style="width: 120px;">Stato</th>
               <th style="width: 110px;" class="text-end">Azioni</th>
             </tr>
@@ -792,13 +823,27 @@ if (!empty($_SESSION['flash_msg'])) {
               $origName = (string)($r['original_name'] ?? '—');
               $links_found = isset($r['links_found']) ? (string)$r['links_found'] : '0';
               if ($links_found === '') $links_found = '0';
+              $warnings_count = 0;
+              if ($hasColWarning) {
+                  $warningJson = (string)($r['warning'] ?? '');
+                  $decodedWarnings = json_decode($warningJson, true);
+                  if (is_array($decodedWarnings)) $warnings_count = count($decodedWarnings);
+              }
 
               $isZip = ($hasInput && $inputRel && str_ends_with(strtolower($inputRel), '.zip'));
           ?>
             <tr>
               <td><?= h($dt['date']) ?></td>
               <td><?= h($dt['time']) ?></td>
-              <td class="fw-semibold name-cell" title="<?= h($origName) ?>"><?= h($origName) ?></td>
+              <td class="fw-semibold name-cell" title="<?= h($origName) ?>">
+                <?php if ($hasOutput && $outputRel): ?>
+                  <a href="<?= h($outputRel) ?>" target="_blank" class="text-decoration-none">
+                    <?= h($origName) ?>
+                  </a>
+                <?php else: ?>
+                  <?= h($origName) ?>
+                <?php endif; ?>
+              </td>
               <td><?= h($links_found) ?></td>
 
               <td>
@@ -830,6 +875,8 @@ if (!empty($_SESSION['flash_msg'])) {
                   <?php endif; ?>
                 </div>
               </td>
+
+              <td><?= (int)$warnings_count ?></td>
 
               <td><?= badge_status($rc, $hasOutput, $dirName) ?></td>
 

@@ -145,6 +145,41 @@ def build_codice_urn(match):
         estensione=art_ext
     )
 
+def build_legge_urn(match, include_articolo=False):
+    num = match.group("num")
+    year = match.group("year")
+    raw_key = f"l.{num}/{year}"
+    entry = lookup_urn_entry(raw_key)
+    warning = None
+    if entry:
+        tipo = entry["tipo"]
+        numero = entry["numero"]
+        data = entry["data"]
+    else:
+        tipo = "legge"
+        numero = num
+        data = f"{year}-01-01"
+        warning = {
+            "ref": match.group(0).strip(),
+            "numero": num,
+            "anno": year,
+        }
+
+    art_num = None
+    art_ext = None
+    if include_articolo:
+        raw_art = match.group("art")
+        art_num, art_ext = parse_articolo(raw_art)
+
+    urn = build_urn(
+        tipo=tipo,
+        numero=numero,
+        data=data,
+        articolo=art_num,
+        estensione=art_ext
+    )
+    return urn, warning
+
 # =========================
 # REGEX RULES (Normattiva)
 # =========================
@@ -158,7 +193,31 @@ norm_rules = [
             rf"(?=(?:\s|,|;|\.|:|\)|\]|$))",
             re.IGNORECASE
         ),
-        lambda m: (m.group(0), build_codice_urn(m))
+        lambda m: (m.group(0), build_codice_urn(m), None)
+    ),
+
+    # art. 5 L. 241/1990
+    (
+        re.compile(
+            rf"\b(?:art\.?|articolo)\s+"
+            rf"(?P<art>\d+(?:[-–\.]?(?:{_EXT_TOKEN}))?)\s+"
+            r"(?:l\.?|legge)\s*(?:n\.|n°|nº|num\.|numero)?\s*"
+            r"(?P<num>\d+)\s*/\s*(?P<year>\d{4})"
+            r"(?=(?:\s|,|;|\.|:|\)|\]|$))",
+            re.IGNORECASE
+        ),
+        lambda m: (m.group(0), *build_legge_urn(m, include_articolo=True))
+    ),
+
+    # L. 241/1990
+    (
+        re.compile(
+            r"\b(?:l\.?|legge)\s*(?:n\.|n°|nº|num\.|numero)?\s*"
+            r"(?P<num>\d+)\s*/\s*(?P<year>\d{4})"
+            r"(?=(?:\s|,|;|\.|:|\)|\]|$))",
+            re.IGNORECASE
+        ),
+        lambda m: (m.group(0), *build_legge_urn(m, include_articolo=False))
     ),
 
     # art. 24 Cost.
@@ -176,7 +235,8 @@ norm_rules = [
                 articolo=str(roman_to_int(m.group("art")))
                 if re.fullmatch(r"[IVXLCDM]+", m.group("art"), re.I)
                 else m.group("art")
-            ).replace(";", "", 1)
+            ).replace(";", "", 1),
+            None
         )
     ),
 ]
@@ -415,19 +475,19 @@ def collect_matches(text):
     # Normattiva (codici + cost.)
     for pattern, handler in norm_rules:
         for m in pattern.finditer(text):
-            label, link = handler(m)
+            label, link, warning = handler(m)
             if link:
-                matches.append((m.start(), m.end(), label, link, "N"))
+                matches.append((m.start(), m.end(), label, link, "N", warning))
 
     # File links
     for rx, url, _alias in file_patterns:
         for m in rx.finditer(text):
             label = m.group(0)
             if label:
-                matches.append((m.start(), m.end(), label, url, "F"))
+                matches.append((m.start(), m.end(), label, url, "F", None))
 
     def _key(x):
-        s, e, _lbl, _url, typ = x
+        s, e, _lbl, _url, typ, _warning = x
         return (s, -(e - s), 0 if typ == "N" else 1)
 
     matches.sort(key=_key)
@@ -435,13 +495,30 @@ def collect_matches(text):
     # overlap: tieni primo non sovrapposto
     out = []
     last_end = -1
-    for s, e, lbl, url, typ in matches:
+    for s, e, lbl, url, typ, warning in matches:
         if s < last_end:
             continue
-        out.append((s, e, lbl, url, typ))
+        out.append((s, e, lbl, url, typ, warning))
         last_end = e
 
     return out
+
+# =========================
+# PAGE BREAK UTILS
+# =========================
+def paragraph_has_page_break_before(paragraph):
+    p_pr = paragraph._p.find(qn("w:pPr"))
+    if p_pr is None:
+        return False
+    return p_pr.find(qn("w:pageBreakBefore")) is not None
+
+def run_has_page_break(run):
+    for br in run._r.findall(qn("w:br")):
+        if br.get(qn("w:type")) == "page":
+            return True
+    if run._r.findall(qn("w:lastRenderedPageBreak")):
+        return True
+    return False
 
 # =========================
 # MAIN (PRESERVA RUN STYLE)
@@ -451,8 +528,13 @@ doc = Document(input_path)
 total_links = 0
 links_norm = 0
 links_files = 0
+warnings = []
+current_page = 1
 
 for para in doc.paragraphs:
+    if paragraph_has_page_break_before(para):
+        current_page += 1
+
     # se non ci sono run, skip
     if not para.runs:
         continue
@@ -464,8 +546,10 @@ for para in doc.paragraphs:
     if not full_text.strip():
         continue
 
+    run_page_breaks = {i for i, r in enumerate(para.runs) if run_has_page_break(r)}
     ms = collect_matches(full_text)
     if not ms:
+        current_page += len(run_page_breaks)
         continue
 
     log(f"PARA: {full_text}")
@@ -492,7 +576,7 @@ for para in doc.paragraphs:
     clear_paragraph_keep_pPr(para)
 
     last = 0
-    for start, end, label, link, typ in ms:
+    for start, end, label, link, typ, warning in ms:
         # testo “normale” prima del link
         if start > last:
             chunk = full_text[last:start]
@@ -508,11 +592,18 @@ for para in doc.paragraphs:
             links_norm += 1
         else:
             links_files += 1
+        if warning:
+            run_index = pos_map[start][0] if pos_map else 0
+            page_offset = sum(1 for idx in run_page_breaks if idx < run_index)
+            warning_entry = dict(warning)
+            warning_entry["page"] = current_page + page_offset
+            warnings.append(warning_entry)
 
     # testo dopo ultimo match
     if last < len(full_text):
         chunk = full_text[last:]
         para._p.append(_make_run_element(chunk, rPr_at_pos(last)))
+    current_page += len(run_page_breaks)
 
 if os.path.exists(output_path):
     os.remove(output_path)
@@ -523,4 +614,6 @@ log(f"✅ COMPLETATO – link creati: {total_links} (norm={links_norm}, files={l
 print(f"LINKS_CREATED={total_links}")
 print(f"LINKS_NORMATTIVA={links_norm}")
 print(f"LINKS_FILES={links_files}")
+print("WARNINGS_JSON=" + json.dumps(warnings, ensure_ascii=False))
+print(f"WARNINGS_COUNT={len(warnings)}")
 sys.exit(0)
