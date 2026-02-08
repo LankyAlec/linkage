@@ -835,7 +835,15 @@ if (!empty($_SESSION['flash_msg'])) {
             <tr>
               <td><?= h($dt['date']) ?></td>
               <td><?= h($dt['time']) ?></td>
-              <td class="fw-semibold name-cell" title="<?= h($origName) ?>"><?= h($origName) ?></td>
+              <td class="fw-semibold name-cell" title="<?= h($origName) ?>">
+                <?php if ($hasOutput && $outputRel): ?>
+                  <a href="<?= h($outputRel) ?>" target="_blank" class="text-decoration-none">
+                    <?= h($origName) ?>
+                  </a>
+                <?php else: ?>
+                  <?= h($origName) ?>
+                <?php endif; ?>
+              </td>
               <td><?= h($links_found) ?></td>
 
               <td>
